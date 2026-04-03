@@ -3,83 +3,66 @@ from flask import Flask
 
 app = Flask(__name__)
 @app.route('/')
-def home(): return "AAVYA DOWNLOADER PRO ACTIVE 🚀", 200
+def home(): return "AAVYA DOWNLOADER IS LIVE 🚀", 200
 
-# --- CONFIG ---
 API_TOKEN = os.getenv('BOT_TOKEN')
 DEV_CREDIT = "@AAVYAxBOTS"
-bot = telebot.TeleBot(API_TOKEN)
+bot = telebot.TeleBot(API_TOKEN, threaded=True)
 
-# Pinterest short links (pin.it) ko full link mein badalne ke liye
-def expand_url(url):
+# Pinterest Fix: Short URL ko expand karne ke liye
+def get_full_url(url):
     try:
-        response = requests.get(url, timeout=10, allow_redirects=True)
-        return response.url
-    except:
-        return url
+        res = requests.get(url, allow_redirects=True, timeout=5)
+        return res.url
+    except: return url
 
-# --- DOWNLOAD LOGIC ---
 def download_media(url, chat_id, message_id):
-    full_url = expand_url(url) # Pinterest fix
-    
+    full_url = get_full_url(url)
     ydl_opts = {
         'format': 'best',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
-        'quiet': True,
-        'no_warnings': True,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-        }
+        'quiet': True, 'no_warnings': True,
+        'http_headers': {'User-Agent': 'Mozilla/5.0'}
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            bot.edit_message_text("⚡ <b>Downloading... Please wait.</b>", chat_id, message_id, parse_mode='HTML')
+            bot.edit_message_text("⚡ <b>Downloading...</b>", chat_id, message_id, parse_mode='HTML')
             info = ydl.extract_info(full_url, download=True)
             file_path = ydl.prepare_filename(info)
 
-            # Ekdum clean caption
-            clean_caption = (
+            caption = (
                 "✅ <b>DOWNLOAD SUCCESSFUL</b>\n\n"
-                f"🎬 <b>Title:</b> <code>{info.get('title', 'Media File')[:50]}</code>\n\n"
-                f"💎 <b>Developed By:</b> <tg-spoiler>{DEV_CREDIT}</tg-spoiler>"
+                f"🎬 <b>Title:</b> <code>{info.get('title', 'Media')[:50]}</code>\n\n"
+                f"💎 <b>Dev:</b> <tg-spoiler>{DEV_CREDIT}</tg-spoiler>"
             )
             
             with open(file_path, 'rb') as media:
-                # 💯 Success Reaction
-                sent = bot.send_document(chat_id, media, caption=clean_caption, parse_mode='HTML')
+                sent = bot.send_document(chat_id, media, caption=caption, parse_mode='HTML')
+                # SUCCESS REACTION
                 try:
-                    bot.set_message_reaction(chat_id, sent.message_id, reaction=[{"type": "emoji", "emoji": "💯"}])
-                except Exception as e:
-                    print(f"Reaction Error: {e}")
+                    bot.set_message_reaction(chat_id, sent.message_id, [telebot.types.ReactionTypeEmoji('💯')], is_big=True)
+                except: pass
 
             if os.path.exists(file_path): os.remove(file_path)
             bot.delete_message(chat_id, message_id)
 
-    except Exception as e:
-        print(f"Download Error: {e}")
+    except Exception:
         try:
-            bot.set_message_reaction(chat_id, message_id, reaction=[{"type": "emoji", "emoji": "😭"}])
+            bot.set_message_reaction(chat_id, message_id, [telebot.types.ReactionTypeEmoji('😭')])
         except: pass
-        bot.edit_message_text("❌ <b>ERROR:</b> Pinterest link or platform not supported.", chat_id, message_id, parse_mode='HTML')
+        bot.edit_message_text("❌ <b>ERROR:</b> Pinterest link failed or not supported.", chat_id, message_id, parse_mode='HTML')
 
-# --- HANDLERS ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    welcome_text = (
-        f"✨ <b>Welcome {message.from_user.first_name}!</b> ✨\n\n"
-        f"<blockquote>Pinterest, Insta, FB, YT — Sab kuch download hoga!</blockquote>\n\n"
-        f"💎 <b>Dev:</b> <tg-spoiler>{DEV_CREDIT}</tg-spoiler>"
-    )
-    bot.reply_to(message, welcome_text, parse_mode='HTML')
+    bot.reply_to(message, f"✨ <b>Welcome!</b>\n\n<blockquote>Send any link to download.</blockquote>\n\n💎 <b>Dev:</b> <tg-spoiler>{DEV_CREDIT}</tg-spoiler>", parse_mode='HTML')
 
 @bot.message_handler(func=lambda m: m.text and m.text.startswith('http'))
 def handle_links(message):
-    # 🌚 Immediate Reaction on Receipt
+    # RECEIVE REACTION
     try:
-        bot.set_message_reaction(message.chat.id, message.message_id, reaction=[{"type": "emoji", "emoji": "🌚"}])
-    except Exception as e:
-        print(f"Reaction Error: {e}")
+        bot.set_message_reaction(message.chat.id, message.message_id, [telebot.types.ReactionTypeEmoji('🌚')])
+    except: pass
     
     wait = bot.reply_to(message, "⏳ <b>Processing...</b>", parse_mode='HTML')
     threading.Thread(target=download_media, args=(message.text, message.chat.id, wait.message_id)).start()

@@ -1,4 +1,4 @@
 pyTelegramBotAPI==4.16.1
-yt-dlp
+yt-dlp==2025.01.26
 flask
 requests

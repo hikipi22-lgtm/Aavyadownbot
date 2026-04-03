@@ -17,7 +17,6 @@ bot = telebot.TeleBot(API_TOKEN)
 
 # --- DOWNLOAD LOGIC ---
 def download_media(url, chat_id, message_id):
-    # Pinterest aur baaki platforms ke liye best setting
     ydl_opts = {
         'format': 'best',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
@@ -33,7 +32,6 @@ def download_media(url, chat_id, message_id):
             file_path = ydl.prepare_filename(info)
             res_time = f"{int((time.time() - start_time) * 1000)}ms"
 
-            # Clean JSON Status
             api_status = {
                 "status": "success",
                 "code": 200,
@@ -48,8 +46,6 @@ def download_media(url, chat_id, message_id):
             
             json_preview = f"<pre>{json.dumps(api_status, indent=4)}</pre>"
             
-            # --- FINAL NEAT CAPTION ---
-            # Developer name in spoiler: <tg-spoiler>
             final_caption = (
                 "✅ <b>DOWNLOAD SUCCESSFUL</b>\n\n"
                 "🎯 <b>RESPONSE INFO</b>\n"
@@ -59,25 +55,24 @@ def download_media(url, chat_id, message_id):
             
             with open(file_path, 'rb') as media:
                 sent_msg = bot.send_document(chat_id, media, caption=final_caption, parse_mode='HTML')
-                # 💯 Reaction on Success
                 try:
                     bot.set_message_reaction(chat_id, sent_msg.message_id, reaction=[{"type": "emoji", "emoji": "💯"}])
-                except: pass
+                except:
+                    pass
 
             if os.path.exists(file_path): os.remove(file_path)
             bot.delete_message(chat_id, message_id)
 
     except Exception:
-        # 😭 Reaction on Failure
         try:
             bot.set_message_reaction(chat_id, message_id, reaction=[{"type": "emoji", "emoji": "😭"}])
-        except: pass
+        except:
+            pass
         bot.edit_message_text("❌ <b>ERROR:</b> Link not supported or file too large.", chat_id, message_id, parse_mode='HTML')
 
 # --- HANDLERS ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    # Quote Feature use karne ke liye <blockquote> tag
     welcome = (
         f"✨ <b>Welcome {message.from_user.first_name}!</b> ✨\n\n"
         f"<blockquote>Main ek Universal Downloader hoon. Kishi bhi platform ka link bhejein, main download kar dunga.</blockquote>\n\n"
@@ -88,10 +83,10 @@ def start(message):
 
 @bot.message_handler(func=lambda m: m.text and m.text.startswith('http'))
 def handle_links(message):
-    # 🌚 Reaction immediately
     try:
         bot.set_message_reaction(message.chat.id, message.message_id, reaction=[{"type": "emoji", "emoji": "🌚"}])
-    except: pass
+    except:
+        pass
     
     wait = bot.reply_to(message, "⚡ <b>Processing your request...</b>", parse_mode='HTML')
     threading.Thread(target=download_media, args=(message.text, message.chat.id, wait.message_id)).start()
@@ -101,5 +96,3 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port), daemon=True).start()
     bot.infinity_polling(timeout=90)
-        except Exception:
-            time.sleep(10)

@@ -8,21 +8,22 @@ from flask import Flask
 
 app = Flask(__name__)
 @app.route('/')
-def home(): return "AAVYA PREMIUM DOWNLOADER IS LIVE 🚀", 200
+def home(): return "AAVYA V2 ONLINE 🚀", 200
 
-# --- CONFIGURATION ---
+# --- CONFIG ---
 API_TOKEN = os.getenv('BOT_TOKEN')
 DEV_CREDIT = "@AAVYAxBOTS"
 bot = telebot.TeleBot(API_TOKEN)
 
-# --- MEDIA DOWNLOAD LOGIC ---
+# --- DOWNLOAD LOGIC ---
 def download_media(url, chat_id, message_id):
+    # Pinterest aur baaki platforms ke liye best setting
     ydl_opts = {
         'format': 'best',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
         'quiet': True,
         'no_warnings': True,
-        'merge_output_format': 'mp4',
+        'check_formats': True,
     }
 
     try:
@@ -32,14 +33,14 @@ def download_media(url, chat_id, message_id):
             file_path = ydl.prepare_filename(info)
             res_time = f"{int((time.time() - start_time) * 1000)}ms"
 
-            # Elegant JSON Block
+            # Clean JSON Status
             api_status = {
                 "status": "success",
                 "code": 200,
                 "response_time": res_time,
                 "data": {
                     "found": True,
-                    "title": info.get('title', 'Media File')[:40] + "...",
+                    "title": info.get('title', 'Media File')[:40],
                     "platform": info.get('extractor_key', 'Universal'),
                 },
                 "DEVELOPED BY": DEV_CREDIT
@@ -47,22 +48,18 @@ def download_media(url, chat_id, message_id):
             
             json_preview = f"<pre>{json.dumps(api_status, indent=4)}</pre>"
             
-            # --- NEAT & CLEAN CAPTION ---
+            # --- FINAL NEAT CAPTION ---
+            # Developer name in spoiler: <tg-spoiler>
             final_caption = (
                 "✅ <b>DOWNLOAD SUCCESSFUL</b>\n\n"
                 "🎯 <b>RESPONSE INFO</b>\n"
                 f"{json_preview}\n\n"
-                f"👤 <b>Developer:</b> {DEV_CREDIT}"
+                f"👤 <b>Developer:</b> <tg-spoiler>{DEV_CREDIT}</tg-spoiler>"
             )
             
             with open(file_path, 'rb') as media:
+                sent_msg = bot.send_document(chat_id, media, caption=final_caption, parse_mode='HTML')
                 # 💯 Reaction on Success
-                sent_msg = bot.send_document(
-                    chat_id, 
-                    media, 
-                    caption=final_caption, 
-                    parse_mode='HTML'
-                )
                 try:
                     bot.set_message_reaction(chat_id, sent_msg.message_id, reaction=[{"type": "emoji", "emoji": "💯"}])
                 except: pass
@@ -75,24 +72,23 @@ def download_media(url, chat_id, message_id):
         try:
             bot.set_message_reaction(chat_id, message_id, reaction=[{"type": "emoji", "emoji": "😭"}])
         except: pass
-        bot.edit_message_text("❌ <b>ERROR:</b> Link invalid or server busy.", chat_id, message_id, parse_mode='HTML')
+        bot.edit_message_text("❌ <b>ERROR:</b> Link not supported or file too large.", chat_id, message_id, parse_mode='HTML')
 
 # --- HANDLERS ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    # Stylish Welcome Message
+    # Quote Feature use karne ke liye <blockquote> tag
     welcome = (
-        f"✨ <b>Hello {message.from_user.first_name}!</b> ✨\n\n"
-        f"Main ek <b>Universal Downloader</b> hoon.\n"
-        f"Kishi bhi platform ka link bhejein, main download kar dunga.\n\n"
-        f"📌 <b>Supported:</b> Insta, YT, FB, X, etc.\n"
-        f"💎 <b>Dev:</b> {DEV_CREDIT}"
+        f"✨ <b>Welcome {message.from_user.first_name}!</b> ✨\n\n"
+        f"<blockquote>Main ek Universal Downloader hoon. Kishi bhi platform ka link bhejein, main download kar dunga.</blockquote>\n\n"
+        f"📌 <b>Supported:</b> Pinterest, Insta, YT, FB, X, etc.\n"
+        f"💎 <b>Dev:</b> <tg-spoiler>{DEV_CREDIT}</tg-spoiler>"
     )
     bot.reply_to(message, welcome, parse_mode='HTML')
 
 @bot.message_handler(func=lambda m: m.text and m.text.startswith('http'))
 def handle_links(message):
-    # 🌚 Reaction on Receipt
+    # 🌚 Reaction immediately
     try:
         bot.set_message_reaction(message.chat.id, message.message_id, reaction=[{"type": "emoji", "emoji": "🌚"}])
     except: pass
@@ -104,9 +100,6 @@ if __name__ == "__main__":
     if not os.path.exists('downloads'): os.makedirs('downloads')
     port = int(os.environ.get("PORT", 10000))
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port), daemon=True).start()
-    
-    while True:
-        try:
-            bot.infinity_polling(timeout=90)
+    bot.infinity_polling(timeout=90)
         except Exception:
             time.sleep(10)

@@ -1,14 +1,25 @@
-import os, telebot, yt_dlp, threading, time, requests, sqlite3
+import os
+import telebot
+import yt_dlp
+import threading
+import time
+import requests
+import sqlite3
 from flask import Flask
 
+# --- FLASK FOR RENDER DEPLOYMENT ---
 app = Flask(__name__)
+
 @app.route('/')
-def home(): return "AAVYA V4 DATABASE ACTIVE 🚀", 200
+def home():
+    return "AAVYA V4 DATABASE ACTIVE 🚀", 200
 
 # --- CONFIG ---
+# Environment variables se token uthayega (Render Settings mein add karna)
 API_TOKEN = os.getenv('BOT_TOKEN')
-OWNER_ID = 12345678  # <--- APNI ID DALO
+OWNER_ID = 12345678  # <--- APNI NUMERIC ID YAHAN DALO
 DEV_CREDIT = "@AAVYAxBOTS"
+
 bot = telebot.TeleBot(API_TOKEN, threaded=True)
 
 # --- DATABASE SETUP ---
@@ -28,11 +39,14 @@ def add_user(user_id):
 
 # --- DOWNLOADER LOGIC ---
 def download_media(url, message):
-    msg = bot.reply_to(message, "⏳ **Downloading... Please wait!**", parse_mode='Markdown')
+    # Initial processing message
+    msg = bot.reply_to(message, "⏳ <b>Downloading... Please wait!</b>", parse_mode='HTML')
+    
     ydl_opts = {
         'format': 'best',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
         'quiet': True,
+        'no_warnings': True,
     }
 
     try:
@@ -41,15 +55,25 @@ def download_media(url, message):
             filename = ydl.prepare_filename(info)
             
             with open(filename, 'rb') as f:
-                bot.send_document(message.chat.id, f, caption=f"✅ **Downloaded!**\n\n💎 **Dev:** {DEV_CREDIT}", parse_mode='Markdown')
+                # Video send karte waqt caption mein credits
+                bot.send_video(
+                    message.chat.id, 
+                    f, 
+                    caption=f"✅ <b>Downloaded Successfully!</b>\n\n💎 <b>Dev:</b> {DEV_CREDIT}", 
+                    parse_mode='HTML',
+                    reply_to_message_id=message.message_id
+                )
             
-            os.remove(filename)
+            # Memory clean up
+            if os.path.exists(filename):
+                os.remove(filename)
             bot.delete_message(message.chat.id, msg.message_id)
             
     except Exception as e:
-        bot.edit_message_text(f"❌ **Error:** Link not supported!\n`{str(e)[:50]}`", message.chat.id, msg.message_id, parse_mode='Markdown')
+        error_text = f"❌ <b>Error:</b> Link not supported or timeout!\n<code>{str(e)[:100]}</code>"
+        bot.edit_message_text(error_text, message.chat.id, msg.message_id, parse_mode='HTML')
 
-# --- ADMIN LOGIC ---
+# --- ADMIN: BROADCAST ---
 @bot.message_handler(commands=['broadcast'], func=lambda m: m.from_user.id == OWNER_ID)
 def broadcast_command(message):
     msg_text = message.text.replace('/broadcast', '').strip()
@@ -70,13 +94,13 @@ def broadcast_command(message):
         try:
             bot.send_message(user[0], f"📢 <b>IMPORTANT UPDATE</b>\n\n<b><blockquote>{msg_text}</blockquote></b>", parse_mode='HTML')
             success += 1
-            time.sleep(0.1)
+            time.sleep(0.2) # Rate limit protection
         except:
             fail += 1
 
     bot.send_message(message.chat.id, f"✅ <b>BROADCAST FINISHED</b>\n\n<b><blockquote>Success: {success}\nFailed: {fail}</blockquote></b>", parse_mode='HTML')
 
-# --- HANDLERS ---
+# --- COMMAND: START ---
 @bot.message_handler(commands=['start'])
 def start(message):
     add_user(message.from_user.id)
@@ -87,22 +111,36 @@ def start(message):
     )
     bot.reply_to(message, welcome, parse_mode='HTML')
 
-# --- NEW: HANDLING LINKS & REPLIES IN GROUPS ---
-@bot.message_handler(func=lambda m: m.text and ("http" in m.text))
+# --- HANDLER: ALL LINKS (Private & Groups) ---
+@bot.message_handler(func=lambda m: m.text and ("http://" in m.text or "https://" in m.text))
 def handle_all_links(message):
     add_user(message.from_user.id)
     
-    # Reaction Logic
+    # Reaction feature for engagement
     try:
         bot.set_message_reaction(message.chat.id, message.message_id, [telebot.types.ReactionTypeEmoji('🔥')])
     except:
         pass
         
+    # Start download in a separate thread to keep bot responsive
     threading.Thread(target=download_media, args=(message.text.strip(), message)).start()
 
+# --- MAIN RUNNER ---
 if __name__ == "__main__":
     init_db()
-    if not os.path.exists('downloads'): os.makedirs('downloads')
+    if not os.path.exists('downloads'): 
+        os.makedirs('downloads')
+    
+    # Run Flask in background for Render's port binding
     port = int(os.environ.get("PORT", 10000))
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port), daemon=True).start()
-    bot.infinity_polling(timeout=90, skip_pending=True)
+    
+    print("AAVYA V4 is now Running... 🚀")
+    
+    # Conflict 409 Auto-Restart Logic
+    while True:
+        try:
+            bot.infinity_polling(timeout=90, skip_pending=True)
+        except Exception as e:
+            print(f"Polling Error: {e}")
+            time.sleep(5) # 5 seconds wait before restart

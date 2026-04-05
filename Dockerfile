@@ -1,16 +1,24 @@
-FROM python:3.9
+FROM python:3.10-slim
 
-# Install ffmpeg for video processing
-RUN apt-get update && apt-get install -y ffmpeg
+# Install FFmpeg and system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /code
+WORKDIR /app
 
+# Copy and install requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy project files
 COPY . .
 
-# Default port
-EXPOSE 7860
+# Create necessary folders
+RUN mkdir -p downloads
 
-CMD ["python", "app.py"]
+# Port exposure
+EXPOSE 10000
+
+# Start command (using gunicorn for web and python for bot)
+CMD python3 main.py

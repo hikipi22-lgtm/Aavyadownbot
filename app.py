@@ -1,7 +1,6 @@
-import os, telebot, yt_dlp, threading, time, sqlite3
+import os, telebot, yt_dlp, threading, time, requests, sqlite3
 from flask import Flask
 
-# --- FLASK FOR DEPLOYMENT ---
 app = Flask(__name__)
 @app.route('/')
 def home(): return "AAVYA V4 DATABASE ACTIVE 🚀", 200
@@ -27,14 +26,13 @@ def add_user(user_id):
     conn.commit()
     conn.close()
 
-# --- DOWNLOAD LOGIC ---
-def download_video(url, message):
-    msg = bot.reply_to(message, "⏳ **Processing your link...**", parse_mode='Markdown')
+# --- DOWNLOADER LOGIC ---
+def download_media(url, message):
+    msg = bot.reply_to(message, "⏳ **Downloading... Please wait!**", parse_mode='Markdown')
     ydl_opts = {
         'format': 'best',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
-        'restrictfilenames': True,
-        'noplaylist': True,
+        'quiet': True,
     }
 
     try:
@@ -42,31 +40,21 @@ def download_video(url, message):
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             
-            with open(filename, 'rb') as video:
-                bot.send_video(message.chat.id, video, caption=f"✅ **Downloaded Successfully!**\n\n💎 **Dev:** {DEV_CREDIT}", parse_mode='Markdown')
+            with open(filename, 'rb') as f:
+                bot.send_document(message.chat.id, f, caption=f"✅ **Downloaded!**\n\n💎 **Dev:** {DEV_CREDIT}", parse_mode='Markdown')
             
-            os.remove(filename) # Phone/Server memory clean karne ke liye
+            os.remove(filename)
             bot.delete_message(message.chat.id, msg.message_id)
             
     except Exception as e:
-        bot.edit_message_text(f"❌ **Error:** Link support nahi kar raha ya private hai.\n`{str(e)[:50]}`", message.chat.id, msg.message_id, parse_mode='Markdown')
+        bot.edit_message_text(f"❌ **Error:** Link not supported!\n`{str(e)[:50]}`", message.chat.id, msg.message_id, parse_mode='Markdown')
 
-# --- HANDLERS ---
-@bot.message_handler(commands=['start'])
-def start(message):
-    add_user(message.from_user.id)
-    welcome = (
-        f"✨ **WELCOME {message.from_user.first_name.upper()}!** ✨\n\n"
-        "**Main sabhi social media links download kar sakta hoon.**\n"
-        "Bas link bhejo aur download shuru!"
-    )
-    bot.reply_to(message, welcome, parse_mode='Markdown')
-
+# --- ADMIN LOGIC ---
 @bot.message_handler(commands=['broadcast'], func=lambda m: m.from_user.id == OWNER_ID)
 def broadcast_command(message):
     msg_text = message.text.replace('/broadcast', '').strip()
     if not msg_text:
-        bot.reply_to(message, "Bhai, message toh likho!")
+        bot.reply_to(message, "<b><blockquote>Bhai, message toh likho! Example: /broadcast Hello Users</blockquote></b>", parse_mode='HTML')
         return
 
     conn = sqlite3.connect('users.db')
@@ -75,32 +63,46 @@ def broadcast_command(message):
     users = c.fetchall()
     conn.close()
 
-    bot.reply_to(message, f"🚀 Broadcast shuru: {len(users)} users.")
+    success, fail = 0, 0
+    bot.reply_to(message, f"🚀 <b><blockquote>Broadcast shuru ho raha hai {len(users)} users ko...</blockquote></b>", parse_mode='HTML')
+
     for user in users:
         try:
-            bot.send_message(user[0], f"📢 **UPDATE**\n\n{msg_text}", parse_mode='Markdown')
+            bot.send_message(user[0], f"📢 <b>IMPORTANT UPDATE</b>\n\n<b><blockquote>{msg_text}</blockquote></b>", parse_mode='HTML')
+            success += 1
             time.sleep(0.1)
-        except: continue
-    bot.send_message(message.chat.id, "✅ Broadcast complete!")
+        except:
+            fail += 1
 
-# --- LINK HANDLER (Groups + Private) ---
-@bot.message_handler(func=lambda m: m.text and ("http://" in m.text or "https://" in m.text))
-def handle_links(message):
+    bot.send_message(message.chat.id, f"✅ <b>BROADCAST FINISHED</b>\n\n<b><blockquote>Success: {success}\nFailed: {fail}</blockquote></b>", parse_mode='HTML')
+
+# --- HANDLERS ---
+@bot.message_handler(commands=['start'])
+def start(message):
     add_user(message.from_user.id)
-    # Reaction feature (Sirf updated Telegram versions ke liye)
+    welcome = (
+        f"✨ <b>WELCOME {message.from_user.first_name.upper()}!</b> ✨\n\n"
+        "<b><blockquote>Main ek Advanced Downloader hoon. Link bhejein aur magic dekhein!</blockquote></b>\n\n"
+        f"💎 <b>Dev:</b> <tg-spoiler>{DEV_CREDIT}</tg-spoiler>"
+    )
+    bot.reply_to(message, welcome, parse_mode='HTML')
+
+# --- NEW: HANDLING LINKS & REPLIES IN GROUPS ---
+@bot.message_handler(func=lambda m: m.text and ("http" in m.text))
+def handle_all_links(message):
+    add_user(message.from_user.id)
+    
+    # Reaction Logic
     try:
-        bot.set_message_reaction(message.chat.id, message.message_id, [telebot.types.ReactionTypeEmoji('⚡')])
+        bot.set_message_reaction(message.chat.id, message.message_id, [telebot.types.ReactionTypeEmoji('🔥')])
     except:
         pass
         
-    url = message.text.strip()
-    threading.Thread(target=download_video, args=(url, message)).start()
+    threading.Thread(target=download_media, args=(message.text.strip(), message)).start()
 
-# --- RUN ---
 if __name__ == "__main__":
     init_db()
     if not os.path.exists('downloads'): os.makedirs('downloads')
     port = int(os.environ.get("PORT", 10000))
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port), daemon=True).start()
-    print("Bot is alive...")
     bot.infinity_polling(timeout=90, skip_pending=True)

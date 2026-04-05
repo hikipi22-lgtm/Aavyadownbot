@@ -13,4 +13,5 @@ COPY . .
 RUN mkdir -p downloads
 
 # Yahan check karo: agar file app.py hai toh app.py likho, agar main.py hai toh main.py
-CMD ["python3", "main.py"] 
+CMD ["python3", "app.py"]
+

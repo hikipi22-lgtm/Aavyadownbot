@@ -15,9 +15,8 @@ def home():
     return "AAVYA V4 DATABASE ACTIVE 🚀", 200
 
 # --- CONFIG ---
-# Environment variables se token uthayega (Render Settings mein add karna)
 API_TOKEN = os.getenv('BOT_TOKEN')
-OWNER_ID = 12345678  # <--- APNI NUMERIC ID YAHAN DALO
+OWNER_ID = 12345678  # <--- APNI ID YAHAN DALO
 DEV_CREDIT = "@AAVYAxBOTS"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True)
@@ -39,8 +38,7 @@ def add_user(user_id):
 
 # --- DOWNLOADER LOGIC ---
 def download_media(url, message):
-    # Initial processing message
-    msg = bot.reply_to(message, "⏳ <b>Downloading... Please wait!</b>", parse_mode='HTML')
+    msg = bot.reply_to(message, "⏳ <b><blockquote>Downloading... Please wait!</blockquote></b>", parse_mode='HTML')
     
     ydl_opts = {
         'format': 'best',
@@ -55,22 +53,25 @@ def download_media(url, message):
             filename = ydl.prepare_filename(info)
             
             with open(filename, 'rb') as f:
-                # Video send karte waqt caption mein credits
+                # Caption mein Spoiler + Quote
+                caption_text = (
+                    "✅ <b>Downloaded Successfully!</b>\n\n"
+                    f"<b><blockquote>💎 Dev: <tg-spoiler>{DEV_CREDIT}</tg-spoiler></blockquote></b>"
+                )
                 bot.send_video(
                     message.chat.id, 
                     f, 
-                    caption=f"✅ <b>Downloaded Successfully!</b>\n\n💎 <b>Dev:</b> {DEV_CREDIT}", 
+                    caption=caption_text, 
                     parse_mode='HTML',
                     reply_to_message_id=message.message_id
                 )
             
-            # Memory clean up
             if os.path.exists(filename):
                 os.remove(filename)
             bot.delete_message(message.chat.id, msg.message_id)
             
     except Exception as e:
-        error_text = f"❌ <b>Error:</b> Link not supported or timeout!\n<code>{str(e)[:100]}</code>"
+        error_text = f"❌ <b>Error:</b> Link not supported!\n<code>{str(e)[:100]}</code>"
         bot.edit_message_text(error_text, message.chat.id, msg.message_id, parse_mode='HTML')
 
 # --- ADMIN: BROADCAST ---
@@ -78,7 +79,7 @@ def download_media(url, message):
 def broadcast_command(message):
     msg_text = message.text.replace('/broadcast', '').strip()
     if not msg_text:
-        bot.reply_to(message, "<b><blockquote>Bhai, message toh likho! Example: /broadcast Hello Users</blockquote></b>", parse_mode='HTML')
+        bot.reply_to(message, "<b><blockquote>Bhai, message toh likho!</blockquote></b>", parse_mode='HTML')
         return
 
     conn = sqlite3.connect('users.db')
@@ -87,18 +88,16 @@ def broadcast_command(message):
     users = c.fetchall()
     conn.close()
 
-    success, fail = 0, 0
-    bot.reply_to(message, f"🚀 <b><blockquote>Broadcast shuru ho raha hai {len(users)} users ko...</blockquote></b>", parse_mode='HTML')
+    bot.reply_to(message, "🚀 <b><blockquote>Broadcast shuru ho raha hai...</blockquote></b>", parse_mode='HTML')
 
     for user in users:
         try:
-            bot.send_message(user[0], f"📢 <b>IMPORTANT UPDATE</b>\n\n<b><blockquote>{msg_text}</blockquote></b>", parse_mode='HTML')
-            success += 1
-            time.sleep(0.2) # Rate limit protection
+            bot.send_message(user[0], f"📢 <b>UPDATE</b>\n\n<b><blockquote>{msg_text}</blockquote></b>", parse_mode='HTML')
+            time.sleep(0.2)
         except:
-            fail += 1
+            continue
 
-    bot.send_message(message.chat.id, f"✅ <b>BROADCAST FINISHED</b>\n\n<b><blockquote>Success: {success}\nFailed: {fail}</blockquote></b>", parse_mode='HTML')
+    bot.send_message(message.chat.id, "✅ <b><blockquote>BROADCAST FINISHED</blockquote></b>", parse_mode='HTML')
 
 # --- COMMAND: START ---
 @bot.message_handler(commands=['start'])
@@ -107,40 +106,30 @@ def start(message):
     welcome = (
         f"✨ <b>WELCOME {message.from_user.first_name.upper()}!</b> ✨\n\n"
         "<b><blockquote>Main ek Advanced Downloader hoon. Link bhejein aur magic dekhein!</blockquote></b>\n\n"
-        f"💎 <b>Dev:</b> <tg-spoiler>{DEV_CREDIT}</tg-spoiler>"
+        f"<b><blockquote>💎 Dev: <tg-spoiler>{DEV_CREDIT}</tg-spoiler></blockquote></b>"
     )
     bot.reply_to(message, welcome, parse_mode='HTML')
 
-# --- HANDLER: ALL LINKS (Private & Groups) ---
-@bot.message_handler(func=lambda m: m.text and ("http://" in m.text or "https://" in m.text))
+# --- HANDLER: ALL LINKS ---
+@bot.message_handler(func=lambda m: m.text and ("http" in m.text))
 def handle_all_links(message):
     add_user(message.from_user.id)
-    
-    # Reaction feature for engagement
     try:
-        bot.set_message_reaction(message.chat.id, message.message_id, [telebot.types.ReactionTypeEmoji('🔥')])
+        bot.set_message_reaction(message.chat.id, message.message_id, [telebot.types.ReactionTypeEmoji('⚡')])
     except:
         pass
-        
-    # Start download in a separate thread to keep bot responsive
     threading.Thread(target=download_media, args=(message.text.strip(), message)).start()
 
 # --- MAIN RUNNER ---
 if __name__ == "__main__":
     init_db()
-    if not os.path.exists('downloads'): 
-        os.makedirs('downloads')
+    if not os.path.exists('downloads'): os.makedirs('downloads')
     
-    # Run Flask in background for Render's port binding
     port = int(os.environ.get("PORT", 10000))
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port), daemon=True).start()
     
-    print("AAVYA V4 is now Running... 🚀")
-    
-    # Conflict 409 Auto-Restart Logic
     while True:
         try:
             bot.infinity_polling(timeout=90, skip_pending=True)
-        except Exception as e:
-            print(f"Polling Error: {e}")
-            time.sleep(5) # 5 seconds wait before restart
+        except Exception:
+            time.sleep(5)

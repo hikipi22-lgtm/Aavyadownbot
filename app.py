@@ -6,19 +6,22 @@ import time
 import sqlite3
 from flask import Flask
 
-# -------------------- FLASK (Render keeps it alive) --------------------
+# -------------------- FLASK (Keeps bot alive on Render) --------------------
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "AAVYA V4 DATABASE ACTIVE 🚀", 200
 
-# -------------------- CONFIG --------------------
-API_TOKEN = 8526355372:AAFIblRog0-2kV3bwVrRh2bYT8XOiPIhuHs
-OWNER_ID = int(os.getenv('OWNER_ID', '8154922225'))   # Replace with your ID
+# -------------------- CONFIGURATION --------------------
+# ✅ CORRECT: Read token from environment (NEVER hardcode)
+API_TOKEN = os.getenv('BOT_TOKEN')
+if not API_TOKEN:
+    raise ValueError("❌ BOT_TOKEN environment variable is not set!")
+
+OWNER_ID = int(os.getenv('OWNER_ID', '12345678'))   # Replace with your Telegram user ID
 DEV_CREDIT = "@AAVYAxBOTS"
 
-# User‑Agent to look like a normal browser
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True)
@@ -38,12 +41,12 @@ def add_user(user_id):
     conn.commit()
     conn.close()
 
-# -------------------- DOWNLOADER (NO COOKIES) --------------------
+# -------------------- DOWNLOADER (No cookies required) --------------------
 def download_media(url, message):
     msg = bot.reply_to(message, "⏳ <b><blockquote>Downloading... Please wait!</blockquote></b>", parse_mode='HTML')
 
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',       # Prefer MP4 video
+        'format': 'best[ext=mp4]/best',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
         'quiet': True,
         'no_warnings': True,
@@ -52,8 +55,6 @@ def download_media(url, message):
         'fragment_retries': 5,
         'extractor_retries': 3,
         'skip_unavailable_fragments': False,
-        # Optional: if you have a proxy, set env var PROXY_URL
-        # 'proxy': os.getenv('PROXY_URL'),
     }
 
     try:
@@ -61,7 +62,7 @@ def download_media(url, message):
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
 
-            if 'entries' in info:          # Playlist -> first item
+            if 'entries' in info:          # Playlist → use first item
                 info = info['entries'][0]
                 filename = ydl.prepare_filename(info)
 
@@ -73,11 +74,14 @@ def download_media(url, message):
 
                 ext = os.path.splitext(filename)[1].lower()
                 if ext in ['.mp4', '.mkv', '.webm', '.avi']:
-                    bot.send_video(message.chat.id, f, caption=caption, parse_mode='HTML', reply_to_message_id=message.message_id)
+                    bot.send_video(message.chat.id, f, caption=caption, parse_mode='HTML',
+                                   reply_to_message_id=message.message_id)
                 elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-                    bot.send_photo(message.chat.id, f, caption=caption, parse_mode='HTML', reply_to_message_id=message.message_id)
+                    bot.send_photo(message.chat.id, f, caption=caption, parse_mode='HTML',
+                                   reply_to_message_id=message.message_id)
                 else:
-                    bot.send_document(message.chat.id, f, caption=caption, parse_mode='HTML', reply_to_message_id=message.message_id)
+                    bot.send_document(message.chat.id, f, caption=caption, parse_mode='HTML',
+                                      reply_to_message_id=message.message_id)
 
             if os.path.exists(filename):
                 os.remove(filename)
@@ -88,7 +92,7 @@ def download_media(url, message):
         if "instagram" in url.lower() and ("429" in error_str or "rate" in error_str.lower()):
             reply = (
                 "❌ <b>Instagram blocked this server's IP.</b>\n\n"
-                "👉 Instagram requires <b>cookies</b> to work on cloud hosting.\n"
+                "👉 Instagram requires cookies to work on cloud hosting.\n"
                 "⚡ You can still download from YouTube, TikTok, Twitter, Pinterest, etc.\n\n"
                 "<i>Tip: For Instagram, use a bot hosted on your own PC or add a cookies file.</i>"
             )
@@ -139,7 +143,8 @@ def start(message):
 def handle_links(message):
     add_user(message.from_user.id)
     try:
-        bot.set_message_reaction(message.chat.id, message.message_id, [telebot.types.ReactionTypeEmoji('⚡')])
+        bot.set_message_reaction(message.chat.id, message.message_id,
+                                 [telebot.types.ReactionTypeEmoji('⚡')])
     except:
         pass
     threading.Thread(target=download_media, args=(message.text.strip(), message)).start()

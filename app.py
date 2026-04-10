@@ -25,7 +25,8 @@ OWNER_ID = int(os.getenv('OWNER_ID', '12345678'))
 DEV_CREDIT = "@AAVYAxBOTS"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# 🍪 Cookies from env string
+# 🍪 Cookies: Secret File method preferred, else env string
+COOKIES_FILE_PATH = "cookies.txt"  # Agar Secret File use kar rahe ho toh ye rakhna
 COOKIES_STRING = os.getenv('INSTAGRAM_COOKIES', '')
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True)
@@ -47,7 +48,6 @@ def add_user(user_id):
 
 # -------------------- SAFE FILENAME --------------------
 def safe_filename(text):
-    """Remove special characters and limit length"""
     text = re.sub(r'[<>:"/\\|?*]', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     if len(text) > 100:
@@ -58,16 +58,20 @@ def safe_filename(text):
 def download_media(url, message):
     msg = bot.reply_to(message, "⏳ <b><blockquote>Downloading... Please wait!</blockquote></b>", parse_mode='HTML')
 
-    # Create temp cookie file
+    # Cookie file preparation
     cookie_file_path = None
-    if COOKIES_STRING.strip():
+    if os.path.exists(COOKIES_FILE_PATH):
+        cookie_file_path = COOKIES_FILE_PATH
+        print("✅ Using cookies.txt file")
+    elif COOKIES_STRING.strip():
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             f.write(COOKIES_STRING)
             cookie_file_path = f.name
+        print("✅ Using cookies from env variable")
+    else:
+        print("⚠️ No cookies found. Instagram may not work.")
 
-    # Use a temp directory for downloads to avoid rename issues
     download_dir = tempfile.mkdtemp(prefix="ytdl_")
-    os.makedirs(download_dir, exist_ok=True)
 
     ydl_opts = {
         'format': 'best[ext=mp4]/best[ext=mp4]/best',
@@ -80,6 +84,8 @@ def download_media(url, message):
         'extractor_retries': 5,
         'skip_unavailable_fragments': False,
         'restrictfilenames': True,
+        # Additional Instagram fixes
+        'extractor_args': {'instagram': {'api': 'web'}},
     }
 
     if cookie_file_path:
@@ -96,13 +102,11 @@ def download_media(url, message):
             has_video = any(f.get('vcodec') != 'none' for f in formats)
 
             if not has_video and info.get('thumbnail'):
-                # Image post
                 ydl_opts['format'] = 'best[ext=jpg]/best[ext=png]/best[ext=webp]/best'
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl_img:
                     info = ydl_img.extract_info(url, download=True)
                     filename = ydl_img.prepare_filename(info)
             else:
-                # Video post
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl_vid:
                     info = ydl_vid.extract_info(url, download=True)
                     filename = ydl_vid.prepare_filename(info)
@@ -110,7 +114,6 @@ def download_media(url, message):
                         info = info['entries'][0]
                         filename = ydl_vid.prepare_filename(info)
 
-            # Handle missing extension
             if not os.path.exists(filename):
                 base = os.path.splitext(filename)[0]
                 for ext in ['.mp4', '.mkv', '.webm', '.jpg', '.png', '.jpeg', '.webp']:
@@ -119,7 +122,6 @@ def download_media(url, message):
                         filename = test
                         break
 
-            # Move to final safe location
             final_dir = 'downloads'
             os.makedirs(final_dir, exist_ok=True)
             final_filename = os.path.join(final_dir, f"{safe_filename(info.get('title', 'media'))}{os.path.splitext(filename)[1]}")
@@ -131,32 +133,13 @@ def download_media(url, message):
                     "✅ <b>Downloaded Successfully!</b>\n\n"
                     f"<b><blockquote>💎 Dev: <tg-spoiler>{DEV_CREDIT}</tg-spoiler></blockquote></b>"
                 )
-
                 ext = os.path.splitext(filename)[1].lower()
                 if ext in ['.mp4', '.mkv', '.webm', '.avi']:
-                    bot.send_video(
-                        message.chat.id,
-                        f,
-                        caption=caption_text,
-                        parse_mode='HTML',
-                        reply_to_message_id=message.message_id
-                    )
+                    bot.send_video(message.chat.id, f, caption=caption_text, parse_mode='HTML', reply_to_message_id=message.message_id)
                 elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-                    bot.send_photo(
-                        message.chat.id,
-                        f,
-                        caption=caption_text,
-                        parse_mode='HTML',
-                        reply_to_message_id=message.message_id
-                    )
+                    bot.send_photo(message.chat.id, f, caption=caption_text, parse_mode='HTML', reply_to_message_id=message.message_id)
                 else:
-                    bot.send_document(
-                        message.chat.id,
-                        f,
-                        caption=caption_text,
-                        parse_mode='HTML',
-                        reply_to_message_id=message.message_id
-                    )
+                    bot.send_document(message.chat.id, f, caption=caption_text, parse_mode='HTML', reply_to_message_id=message.message_id)
 
             os.remove(filename)
             bot.delete_message(message.chat.id, msg.message_id)
@@ -165,17 +148,15 @@ def download_media(url, message):
         error_str = str(e)
         if "instagram" in url.lower() and ("login" in error_str.lower() or "429" in error_str):
             reply = (
-                "❌ <b>Instagram login required or rate limited.</b>\n\n"
-                "👉 Ensure <code>INSTAGRAM_COOKIES</code> env var has fresh cookies.\n"
+                "❌ <b>Instagram login required or cookies expired.</b>\n\n"
+                "👉 <b>Fix:</b> Export fresh cookies from browser and update <code>INSTAGRAM_COOKIES</code> env var or Secret File.\n"
                 "⚡ YouTube, TikTok, etc. will still work."
             )
-        elif "no video formats" in error_str.lower():
-            reply = "❌ <b>No video found in this post.</b> It might be an image-only post. Try again with a reel link."
         else:
             reply = f"❌ <b>Error:</b> <code>{error_str[:200]}</code>"
         bot.edit_message_text(reply, message.chat.id, msg.message_id, parse_mode='HTML')
     finally:
-        if cookie_file_path and os.path.exists(cookie_file_path):
+        if cookie_file_path and cookie_file_path != COOKIES_FILE_PATH and os.path.exists(cookie_file_path):
             os.unlink(cookie_file_path)
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir, ignore_errors=True)
@@ -187,32 +168,21 @@ def broadcast_command(message):
     if not text:
         bot.reply_to(message, "<b><blockquote>Bhai, message toh likho!</blockquote></b>", parse_mode='HTML')
         return
-
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
     c.execute("SELECT user_id FROM users")
     users = c.fetchall()
     conn.close()
-
     bot.reply_to(message, "🚀 <b><blockquote>Broadcast shuru ho raha hai...</blockquote></b>", parse_mode='HTML')
     sent, failed = 0, 0
     for user in users:
         try:
-            bot.send_message(
-                user[0],
-                f"📢 <b>UPDATE</b>\n\n<b><blockquote>{text}</blockquote></b>",
-                parse_mode='HTML'
-            )
+            bot.send_message(user[0], f"📢 <b>UPDATE</b>\n\n<b><blockquote>{text}</blockquote></b>", parse_mode='HTML')
             sent += 1
             time.sleep(0.2)
         except:
             failed += 1
-
-    bot.send_message(
-        message.chat.id,
-        f"✅ <b><blockquote>BROADCAST FINISHED</blockquote></b>\n✅ Sent: {sent}\n❌ Failed: {failed}",
-        parse_mode='HTML'
-    )
+    bot.send_message(message.chat.id, f"✅ <b><blockquote>BROADCAST FINISHED</blockquote></b>\n✅ Sent: {sent}\n❌ Failed: {failed}", parse_mode='HTML')
 
 # -------------------- START --------------------
 @bot.message_handler(commands=['start'])
@@ -225,22 +195,13 @@ def start(message):
     )
     bot.reply_to(message, welcome, parse_mode='HTML')
 
-# -------------------- HANDLE LINKS (WITH REACTION) --------------------
+# -------------------- HANDLE LINKS --------------------
 @bot.message_handler(func=lambda m: m.text and "http" in m.text)
 def handle_all_links(message):
     add_user(message.from_user.id)
     try:
-        # Try to set reaction
-        bot.set_message_reaction(
-            message.chat.id,
-            message.message_id,
-            [telebot.types.ReactionTypeEmoji('⚡')]
-        )
-    except AttributeError:
-        # Older library fallback
-        pass
-    except Exception:
-        # Any other error - ignore
+        bot.set_message_reaction(message.chat.id, message.message_id, [telebot.types.ReactionTypeEmoji('⚡')])
+    except:
         pass
     threading.Thread(target=download_media, args=(message.text.strip(), message)).start()
 
@@ -248,10 +209,8 @@ def handle_all_links(message):
 if __name__ == "__main__":
     init_db()
     os.makedirs('downloads', exist_ok=True)
-
     port = int(os.environ.get("PORT", 10000))
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port), daemon=True).start()
-
     while True:
         try:
             print("🤖 Bot polling started...")

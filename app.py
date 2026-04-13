@@ -29,8 +29,9 @@ from telegram import (
     KeyboardButton,
     ReplyKeyboardMarkup,
     Update,
+    ReactionTypeEmoji,
 )
-from telegram.constants import ParseMode, ReactionEmoji
+from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -44,26 +45,21 @@ from telegram.ext import (
 #  ⚙️  CONFIGURATION (Environment Variables)
 # ═══════════════════════════════════════════════════════════════════════
 
-# Load from environment (Render/cloud)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN environment variable not set!")
 
-# Parse comma-separated admin IDs
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
 SEED_ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip()]
 if not SEED_ADMIN_IDS:
-    # Fallback – you can change or remove this fallback
-    SEED_ADMIN_IDS = [8546440950, 8517539413]
+    SEED_ADMIN_IDS = [8546440950, 8517539413]  # fallback (optional)
 
 TIMEZONE        = pytz.timezone("Asia/Kolkata")
 DB_PATH         = "darkx_bot.db"
 
-# ── File-size limits ──────────────────────────────────────────────────
-MAX_FILE_MB     = 500          # Max file size to ATTEMPT
+MAX_FILE_MB     = 500
 LOCAL_API_URL   = os.getenv("LOCAL_API_URL", "")
 
-# ── yt-dlp quality format strings ─────────────────────────────────────
 QUALITY_FORMATS = {
     "audio": "bestaudio[ext=m4a]/bestaudio/best",
     "360":   "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]/best",
@@ -73,15 +69,12 @@ QUALITY_FORMATS = {
     "best":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
 }
 
-# Default force-join channels
+# 🚀 UPDATED: Only 2 Force-Join Channels
 DEFAULT_CHANNELS = [
-    {"id": "@darkx_soul", "name": "DarkX Soul"},
-    {"id": "@zodexy",     "name": "Zodexy"},
-    {"id": "@dotbhai",    "name": "Dot Bhai"},
-    {"id": "@nfe9812",    "name": "NFE Group"},
+    {"id": "@aavyaxbots", "name": "AAVYAxBOTS Channel"},
+    {"id": "@ffofcchat",  "name": "FF OFC Chat Group"},
 ]
 
-# Credit line (spoiler + blockquote)
 CREDIT_LINE = "> 💎 *Dev:* ||@aavyaxbots||"
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -184,7 +177,9 @@ def init_db() -> None:
         )
     logger.info("Database ready ✅")
 
-# ── User helpers ───────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────
+#  Helper functions (register, ban, admin, stats, etc.)
+# ──────────────────────────────────────────────────────────────────────
 
 def register_user(user) -> None:
     with get_db() as conn:
@@ -199,7 +194,6 @@ def register_user(user) -> None:
             (user.username, user.first_name, user.last_name, user.id),
         )
 
-
 def is_banned(user_id: int) -> bool:
     with get_db() as conn:
         row = conn.execute(
@@ -207,21 +201,17 @@ def is_banned(user_id: int) -> bool:
         ).fetchone()
         return bool(row and row["is_banned"])
 
-
 def ban_user(user_id: int) -> None:
     with get_db() as conn:
         conn.execute("UPDATE users SET is_banned=1 WHERE user_id=?", (user_id,))
-
 
 def unban_user(user_id: int) -> None:
     with get_db() as conn:
         conn.execute("UPDATE users SET is_banned=0 WHERE user_id=?", (user_id,))
 
-
 def get_all_users():
     with get_db() as conn:
         return conn.execute("SELECT * FROM users ORDER BY join_date DESC").fetchall()
-
 
 def get_broadcast_user_ids():
     with get_db() as conn:
@@ -232,19 +222,15 @@ def get_broadcast_user_ids():
             ).fetchall()
         ]
 
-# ── Admin helpers ──────────────────────────────────────────────────────
-
 def is_admin(user_id: int) -> bool:
     with get_db() as conn:
         return conn.execute(
             "SELECT user_id FROM admins WHERE user_id=?", (user_id,)
         ).fetchone() is not None
 
-
 def get_all_admins():
     with get_db() as conn:
         return [r["user_id"] for r in conn.execute("SELECT user_id FROM admins").fetchall()]
-
 
 def add_admin_db(user_id: int, added_by: int) -> None:
     with get_db() as conn:
@@ -253,17 +239,13 @@ def add_admin_db(user_id: int, added_by: int) -> None:
             (user_id, added_by),
         )
 
-
 def remove_admin_db(user_id: int) -> None:
     with get_db() as conn:
         conn.execute("DELETE FROM admins WHERE user_id=?", (user_id,))
 
-# ── Channel helpers ────────────────────────────────────────────────────
-
 def get_all_channels():
     with get_db() as conn:
         return conn.execute("SELECT * FROM channels").fetchall()
-
 
 def add_channel(channel_id: str, channel_name: str, added_by: int) -> None:
     with get_db() as conn:
@@ -273,12 +255,9 @@ def add_channel(channel_id: str, channel_name: str, added_by: int) -> None:
             (channel_id, channel_name, added_by),
         )
 
-
 def remove_channel(channel_id: str) -> None:
     with get_db() as conn:
         conn.execute("DELETE FROM channels WHERE channel_id=?", (channel_id,))
-
-# ── Stats & download log ───────────────────────────────────────────────
 
 def log_download(user_id: int, url: str, platform: str, quality: str,
                  status: str = "success", file_size: float = 0) -> None:
@@ -292,7 +271,6 @@ def log_download(user_id: int, url: str, platform: str, quality: str,
             conn.execute(
                 "UPDATE users SET downloads=downloads+1 WHERE user_id=?", (user_id,)
             )
-
 
 def get_stats() -> dict:
     with get_db() as conn:
@@ -312,25 +290,17 @@ def get_stats() -> dict:
             "broadcasts":      count("SELECT COUNT(*) FROM broadcast_log"),
         }
 
-# ── Settings ───────────────────────────────────────────────────────────
-
 def get_setting(key: str) -> Optional[str]:
     with get_db() as conn:
         row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
         return row[0] if row else None
 
-
 def set_setting(key: str, value: str) -> None:
     with get_db() as conn:
         conn.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, value))
 
-# ═══════════════════════════════════════════════════════════════════════
-#  🛠️  UTILITIES
-# ═══════════════════════════════════════════════════════════════════════
-
 def now_ist() -> str:
     return datetime.now(TIMEZONE).strftime("%d %b %Y • %I:%M %p IST")
-
 
 def detect_platform(url: str) -> str:
     patterns = {
@@ -349,11 +319,9 @@ def detect_platform(url: str) -> str:
             return platform
     return "Unknown Platform"
 
-
 def extract_url(text: str) -> Optional[str]:
     m = re.search(r"https?://[^\s]+", text)
     return m.group() if m else None
-
 
 def fmt_duration(seconds) -> str:
     if not seconds:
@@ -363,19 +331,15 @@ def fmt_duration(seconds) -> str:
     m, s   = divmod(rem, 60)
     return f"{h}h {m}m {s}s" if h else f"{m}m {s}s"
 
-
 def fmt_size(bytes_: int) -> str:
     mb = bytes_ / (1024 * 1024)
     return f"{mb:.1f} MB"
-
 
 def channel_link(ch) -> str:
     cid = ch["channel_id"]
     return f"https://t.me/{cid[1:]}" if cid.startswith("@") else f"https://t.me/{cid}"
 
-
 def parse_inline_buttons(text: str):
-    """Parse 'Name | URL' lines into InlineKeyboard rows (2 per row)."""
     rows = []
     row  = []
     for line in text.strip().splitlines():
@@ -394,7 +358,7 @@ def parse_inline_buttons(text: str):
     return rows
 
 # ═══════════════════════════════════════════════════════════════════════
-#  🔒  FORCE-JOIN CHECK
+#  🔒  FORCE-JOIN
 # ═══════════════════════════════════════════════════════════════════════
 
 async def check_force_join(update: Update, context: ContextTypes.DEFAULT_TYPE) -> list:
@@ -409,7 +373,6 @@ async def check_force_join(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         except Exception:
             missing.append(ch)
     return missing
-
 
 def build_join_keyboard(missing: list) -> InlineKeyboardMarkup:
     rows = []
@@ -438,7 +401,6 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
     )
 
-
 def admin_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
@@ -453,7 +415,6 @@ def admin_menu_kb() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
     )
 
-
 def broadcast_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
@@ -464,7 +425,6 @@ def broadcast_menu_kb() -> ReplyKeyboardMarkup:
         ],
         resize_keyboard=True,
     )
-
 
 def quality_picker_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -510,7 +470,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     await _send_welcome(update, context, user)
-
 
 async def _send_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE, user) -> None:
     default_msg = get_setting("default_msg") or "Send me any video link to download! 🎬"
@@ -602,7 +561,6 @@ async def cmd_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     await _send_statistics(update.message)
 
-
 async def _send_statistics(target) -> None:
     s = get_stats()
     dl_rate = f"{s['success_dl'] / max(1, s['total_downloads']) * 100:.1f}%"
@@ -657,7 +615,6 @@ async def cmd_darkchannel(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         parse_mode=ParseMode.MARKDOWN,
     )
 
-
 async def cmd_removechannel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update.effective_user.id):
         return
@@ -696,7 +653,6 @@ async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except ValueError:
         await update.message.reply_text("❌ Invalid user ID.")
 
-
 async def cmd_unban(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update.effective_user.id):
         return
@@ -711,7 +667,7 @@ async def cmd_unban(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("❌ Invalid user ID.")
 
 # ═══════════════════════════════════════════════════════════════════════
-#  📣  /broadcast  (legacy command kept)
+#  📣  /broadcast
 # ═══════════════════════════════════════════════════════════════════════
 
 async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -766,7 +722,6 @@ async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         msg["text"], parse_mode=ParseMode.MARKDOWN, reply_markup=msg["kb"]
     )
-
 
 async def _build_users_msg(page: int) -> dict:
     users    = get_all_users()
@@ -965,12 +920,12 @@ async def show_quality_picker(update: Update, context: ContextTypes.DEFAULT_TYPE
     short_url = url[:55] + "…" if len(url) > 55 else url
     context.user_data["pending_url"] = url
 
-    # Add reaction 🌚 to user's message
+    # 🌚 reaction on link
     try:
         await context.bot.set_message_reaction(
             chat_id=update.effective_chat.id,
             message_id=update.message.message_id,
-            reaction=[ReactionEmoji("🌚")],
+            reaction=[ReactionTypeEmoji("🌚")],
         )
     except Exception:
         pass
@@ -1073,7 +1028,6 @@ async def _handle_download(
             filepath = os.path.join(tmpdir, files[0])
             filesize = os.path.getsize(filepath)
 
-            # ── File size guard ───────────────────────────────────
             hard_limit_bytes = MAX_FILE_MB * 1024 * 1024
             if filesize > hard_limit_bytes:
                 await proc_msg.edit_text(
@@ -1132,13 +1086,13 @@ async def _handle_download(
                         connect_timeout=60,
                     )
 
-            # Add reaction 💯 to user's original message
+            # 💯 reaction on original message
             if update.message:
                 try:
                     await context.bot.set_message_reaction(
                         chat_id=chat_id,
                         message_id=update.message.message_id,
-                        reaction=[ReactionEmoji("💯")],
+                        reaction=[ReactionTypeEmoji("💯")],
                     )
                 except Exception:
                     pass
@@ -1151,7 +1105,6 @@ async def _handle_download(
             log_download(user.id, url, platform, quality, "success",
                          filesize / 1024 / 1024)
 
-            # ── Notify admins ─────────────────────────────────────
             uname   = f"@{user.username}" if user.username else "_No username_"
             fwd_cap = (
                 f"📥 *New Download*\n"
@@ -1294,7 +1247,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     if data == "how_to":
         await query.edit_message_text(
-            "📥 *How to Download*\n\n"
+            f"📥 *How to Download*\n\n"
             "1️⃣ Copy a video link from any platform\n"
             "2️⃣ Paste it in this chat\n"
             "3️⃣ Choose your quality\n"
@@ -1879,13 +1832,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     text = message.text or ""
 
-    # ── Admin state machine ────────────────────────────────────────────
     admin_state = context.user_data.get("admin_state")
     if admin_state and is_admin(user.id):
         await process_admin_state(update, context, text, admin_state)
         return
 
-    # ── Legacy broadcast button collection ────────────────────────────
     if context.user_data.get("bc_add_button") and is_admin(user.id):
         context.user_data.pop("bc_add_button")
         buttons = parse_inline_buttons(text)
@@ -1908,7 +1859,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
         return
 
-    # ── Admin replying to support ──────────────────────────────────────
     if context.user_data.get("replying_support") and is_admin(user.id):
         target_uid = context.user_data.pop("replying_support")
         try:
@@ -1927,13 +1877,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await message.reply_text(f"❌ Could not send: {e}")
         return
 
-    # ── Admin panel button routing ─────────────────────────────────────
     if is_admin(user.id) and context.user_data.get("in_admin_panel"):
         handled = await handle_admin_panel(update, context, text)
         if handled:
             return
 
-    # ── Global back to menu ────────────────────────────────────────────
     if text == "🔙 Back to Menu":
         context.user_data["in_admin_panel"] = False
         context.user_data["admin_state"]    = None
@@ -1944,7 +1892,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    # ── User: awaiting support message ─────────────────────────────────
     if context.user_data.get("awaiting_support"):
         context.user_data.pop("awaiting_support")
         uname = f"@{user.username}" if user.username else "—"
@@ -1981,7 +1928,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    # ── Main menu ReplyKeyboard buttons ───────────────────────────────
     if text == "📥 How to Download":
         await message.reply_text(
             f"📥 *How to Download*\n\n"
@@ -2054,7 +2000,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    # ── URL detection ──────────────────────────────────────────────────
     url = extract_url(text)
     if url:
         not_joined = await check_force_join(update, context)
@@ -2068,7 +2013,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await show_quality_picker(update, context, url)
         return
 
-    # ── Fallback ───────────────────────────────────────────────────────
     not_joined = await check_force_join(update, context)
     if not_joined:
         await message.reply_text(
@@ -2124,7 +2068,7 @@ def main() -> None:
             filters.TEXT
             | filters.PHOTO
             | filters.VIDEO
-            | filters.DOCUMENT
+            | filters.Document.ALL
             | filters.AUDIO
             | filters.VOICE
             | filters.Sticker.ALL
